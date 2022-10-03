@@ -6,10 +6,6 @@
 #include "sysfont.h"
 
 /* Botao da placa */
-#define BUT_PIO     PIOA
-#define BUT_PIO_ID  ID_PIOA
-#define BUT_PIO_PIN 11
-#define BUT_PIO_PIN_MASK (1 << BUT_PIO_PIN)
 
 #define BUT_1_PIO PIOD
 #define BUT_1_PIO_ID ID_PIOD
@@ -25,6 +21,26 @@
 #define BUT_3_PIO_ID ID_PIOA
 #define BUT_3_IDX 19
 #define BUT_3_IDX_MASK (1u << BUT_3_IDX)
+
+#define IN_1_PIO PIOD
+#define IN_1_PIO_ID ID_PIOD
+#define IN_1_IDX 30
+#define IN_1_IDX_MASK (1u << IN_1_IDX)
+
+#define IN_2_PIO PIOA
+#define IN_2_PIO_ID ID_PIOA
+#define IN_2_IDX 6
+#define IN_2_IDX_MASK (1u << IN_2_IDX)
+
+#define IN_3_PIO PIOC
+#define IN_3_PIO_ID ID_PIOC
+#define IN_3_IDX 19
+#define IN_3_IDX_MASK (1u << IN_3_IDX)
+
+#define IN_4_PIO PIOA
+#define IN_4_PIO_ID ID_PIOA
+#define IN_4_IDX 2
+#define IN_4_IDX_MASK (1u << IN_4_IDX)
 
 /** RTOS  */
 #define TASK_OLED_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
@@ -99,7 +115,7 @@ void RTT_Handler(void) {
 
 	/* IRQ due to Alarm */
 	if ((ul_status & RTT_SR_ALMS) == RTT_SR_ALMS) {
-		
+		xSemaphoreGiveFromISR(xSemaphoreRTT, 0);
 	}
 }
 
@@ -139,24 +155,60 @@ static void task_modo(void *pvParameters){
 static void task_motor(void *pvParameters){
 	
 	int passos;
+	int sequencia = 0;
 	for(;;){
 		if( xQueueReceive(xQueueSteps, &passos, ( TickType_t ) 500 )){
 			printf("passos = %d \n", passos);
 			
+			for(int i = 0; i< passos; i++){
+				
+				printf("i = %d \n", i);
+				//tempo para mudar de fase 5ms
+				RTT_init(1000, 5, RTT_MR_ALMIEN);
+				
+				if( xSemaphoreTake(xSemaphoreRTT, 500 / portTICK_PERIOD_MS) == pdTRUE ){
+					sequencia += 1;
+					
+					printf("sequencia = %d \n", sequencia);
+					if(sequencia > 4){
+						sequencia = 1;
+					}
+				}
+				
+				
+				if(sequencia == 1){
+					pio_set(IN_1_PIO, IN_1_IDX_MASK);
+					pio_clear(IN_2_PIO, IN_2_IDX_MASK);
+					pio_clear(IN_3_PIO, IN_3_IDX_MASK);
+					pio_clear(IN_4_PIO, IN_4_IDX_MASK);
+				}
+				
+				if(sequencia == 2){
+					pio_clear(IN_1_PIO, IN_1_IDX_MASK);
+					pio_set(IN_2_PIO, IN_2_IDX_MASK);
+					pio_clear(IN_3_PIO, IN_3_IDX_MASK);
+					pio_clear(IN_4_PIO, IN_4_IDX_MASK);
+				}
+				
+				if(sequencia == 3){
+					pio_clear(IN_1_PIO, IN_1_IDX_MASK);
+					pio_clear(IN_2_PIO, IN_2_IDX_MASK);
+					pio_set(IN_3_PIO, IN_3_IDX_MASK);
+					pio_clear(IN_4_PIO, IN_4_IDX_MASK);
+				}
+				
+				if(sequencia == 4){
+					pio_clear(IN_1_PIO, IN_1_IDX_MASK);
+					pio_clear(IN_2_PIO, IN_2_IDX_MASK);
+					pio_clear(IN_3_PIO, IN_3_IDX_MASK);
+					pio_set(IN_4_PIO, IN_4_IDX_MASK);
+				}
+					
+			}
 		}
 	}
 }
 
-// static void task_oled(void *pvParameters) {
-// 	gfx_mono_ssd1306_init();
-//   gfx_mono_draw_string("Exemplo RTOS", 0, 0, &sysfont);
-//   gfx_mono_draw_string("oii", 0, 20, &sysfont);
-// 
-// 	for (;;)  {
-//     
-// 
-// 	}
-// }
 
 /************************************************************************/
 /* funcoes                                                              */
@@ -178,15 +230,6 @@ static void configure_console(void) {
 }
 
 static void BUT_init(void) {
-	/* configura prioridae */
-	NVIC_EnableIRQ(BUT_PIO_ID);
-	NVIC_SetPriority(BUT_PIO_ID, 4);
-
-	/* conf botão como entrada */
-	pio_configure(BUT_PIO, PIO_INPUT, BUT_PIO_PIN_MASK, PIO_PULLUP | PIO_DEBOUNCE);
-	pio_set_debounce_filter(BUT_PIO, BUT_PIO_PIN_MASK, 60);
-	pio_enable_interrupt(BUT_PIO, BUT_PIO_PIN_MASK);
-	pio_handler_set(BUT_PIO, BUT_PIO_ID, BUT_PIO_PIN_MASK, PIO_IT_FALL_EDGE , but_callback);
 	
 	pmc_enable_periph_clk(BUT_1_PIO_ID);
 	pmc_enable_periph_clk(BUT_2_PIO_ID);
@@ -220,6 +263,16 @@ static void BUT_init(void) {
 	NVIC_EnableIRQ(BUT_3_PIO_ID);
 	NVIC_SetPriority(BUT_3_PIO_ID, 4);
 	
+	//configuracao motor de passos
+	pmc_enable_periph_clk(IN_1_PIO_ID);
+	pmc_enable_periph_clk(IN_2_PIO_ID);
+	pmc_enable_periph_clk(IN_3_PIO_ID);
+	pmc_enable_periph_clk(IN_4_PIO_ID);
+	
+	pio_configure(IN_1_PIO, PIO_OUTPUT_0, IN_1_IDX_MASK, PIO_DEFAULT);
+	pio_configure(IN_2_PIO, PIO_OUTPUT_0, IN_2_IDX_MASK, PIO_DEFAULT);
+	pio_configure(IN_3_PIO, PIO_OUTPUT_0, IN_3_IDX_MASK, PIO_DEFAULT);
+	pio_configure(IN_4_PIO, PIO_OUTPUT_0, IN_4_IDX_MASK, PIO_DEFAULT);
 }
 
 static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource) {
