@@ -65,6 +65,7 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 
 QueueHandle_t xQueueMode;
+QueueHandle_t xQueueSteps;
 
 
 /************************************************************************/
@@ -100,9 +101,26 @@ static void task_modo(void *pvParameters){
 	BUT_init();
 	
 	int angulo;
+	int n_passos;
 	for(;;){
 		if( xQueueReceive(xQueueMode, &angulo, ( TickType_t ) 500 )){
 			printf("angulo = %d \n", angulo);
+			
+			//transformando o angulo para nuemro de passos
+			n_passos = angulo / 0.17578125;
+			
+			xQueueSend(xQueueSteps, &n_passos, 0);	
+		}
+	}
+}
+
+static void task_motor(void *pvParameters){
+	
+	int passos;
+	for(;;){
+		if( xQueueReceive(xQueueSteps, &passos, ( TickType_t ) 500 )){
+			printf("passos = %d \n", passos);
+			
 		}
 	}
 }
@@ -204,11 +222,20 @@ int main(void) {
 		printf("Failed to create modo task\r\n");
 	}
 	
-	// cria fila de 32 slots de char
+	if (xTaskCreate(task_motor, "motor", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create motor task\r\n");
+	}
+	
+	// cria fila de 64 slots de int
 	xQueueMode = xQueueCreate(64, sizeof(int) );
+	xQueueSteps = xQueueCreate(64, sizeof(int) );
 	
 	// verifica se fila foi criada corretamente
 	if (xQueueMode == NULL){
+		printf("falha em criar a fila mode \n");
+	}
+	// verifica se fila foi criada corretamente
+	if (xQueueSteps == NULL){
 		printf("falha em criar a fila mode \n");
 	}
 	
