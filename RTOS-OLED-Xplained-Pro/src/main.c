@@ -42,6 +42,7 @@ void but1_callback(void);
 void but2_callback(void);
 void but3_callback(void);
 static void BUT_init(void);
+static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource);
 
 /************************************************************************/
 /* RTOS application funcs                                               */
@@ -66,6 +67,7 @@ extern void vApplicationMallocFailedHook(void) {
 
 QueueHandle_t xQueueMode;
 QueueHandle_t xQueueSteps;
+SemaphoreHandle_t xSemaphoreRTT;
 
 
 /************************************************************************/
@@ -91,6 +93,15 @@ void but3_callback(void) {
 	xQueueSendFromISR(xQueueMode, &angulo, 0);
 }
 
+void RTT_Handler(void) {
+	uint32_t ul_status;
+	ul_status = rtt_get_status(RTT);
+
+	/* IRQ due to Alarm */
+	if ((ul_status & RTT_SR_ALMS) == RTT_SR_ALMS) {
+		
+	}
+}
 
 /************************************************************************/
 /* TASKS                                                                */
@@ -211,6 +222,35 @@ static void BUT_init(void) {
 	
 }
 
+static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource) {
+
+	uint16_t pllPreScale = (int) (((float) 32768) / freqPrescale);
+	
+	rtt_sel_source(RTT, false);
+	rtt_init(RTT, pllPreScale);
+	
+	if (rttIRQSource & RTT_MR_ALMIEN) {
+		uint32_t ul_previous_time;
+		ul_previous_time = rtt_read_timer_value(RTT);
+		while (ul_previous_time == rtt_read_timer_value(RTT));
+		rtt_write_alarm_time(RTT, IrqNPulses+ul_previous_time);
+	}
+
+	/* config NVIC */
+	NVIC_DisableIRQ(RTT_IRQn);
+	NVIC_ClearPendingIRQ(RTT_IRQn);
+	NVIC_SetPriority(RTT_IRQn, 4);
+	NVIC_EnableIRQ(RTT_IRQn);
+
+	/* Enable RTT interrupt */
+	if (rttIRQSource & (RTT_MR_RTTINCIEN | RTT_MR_ALMIEN))
+	rtt_enable_interrupt(RTT, rttIRQSource);
+	else
+	rtt_disable_interrupt(RTT, RTT_MR_RTTINCIEN | RTT_MR_ALMIEN);
+	
+}
+
+
 /************************************************************************/
 /* main                                                                 */
 /************************************************************************/
@@ -245,6 +285,11 @@ int main(void) {
 	// verifica se fila foi criada corretamente
 	if (xQueueSteps == NULL){
 		printf("falha em criar a fila mode \n");
+	}
+	
+	xSemaphoreRTT = xSemaphoreCreateBinary();
+	if (xSemaphoreRTT == NULL){
+		printf("falha em criar o semaforo \n");
 	}
 	
 
