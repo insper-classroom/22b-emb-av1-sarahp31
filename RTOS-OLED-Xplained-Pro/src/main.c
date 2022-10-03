@@ -98,6 +98,7 @@ void but3_callback(void) {
 
 static void task_modo(void *pvParameters){
 	
+	gfx_mono_ssd1306_init();
 	BUT_init();
 	
 	int angulo;
@@ -105,6 +106,16 @@ static void task_modo(void *pvParameters){
 	for(;;){
 		if( xQueueReceive(xQueueMode, &angulo, ( TickType_t ) 500 )){
 			printf("angulo = %d \n", angulo);
+			
+			if(angulo == 45){
+				gfx_mono_draw_string("angulo = 45 ", 0, 0, &sysfont);
+			}
+			if(angulo == 90){
+				gfx_mono_draw_string("angulo = 90 ", 0, 0, &sysfont);
+			}
+			if(angulo == 180){
+				gfx_mono_draw_string("angulo = 180", 0, 0, &sysfont);
+			}
 			
 			//transformando o angulo para nuemro de passos
 			n_passos = angulo / 0.17578125;
@@ -125,16 +136,16 @@ static void task_motor(void *pvParameters){
 	}
 }
 
-static void task_oled(void *pvParameters) {
-	gfx_mono_ssd1306_init();
-  gfx_mono_draw_string("Exemplo RTOS", 0, 0, &sysfont);
-  gfx_mono_draw_string("oii", 0, 20, &sysfont);
-
-	for (;;)  {
-    
-
-	}
-}
+// static void task_oled(void *pvParameters) {
+// 	gfx_mono_ssd1306_init();
+//   gfx_mono_draw_string("Exemplo RTOS", 0, 0, &sysfont);
+//   gfx_mono_draw_string("oii", 0, 20, &sysfont);
+// 
+// 	for (;;)  {
+//     
+// 
+// 	}
+// }
 
 /************************************************************************/
 /* funcoes                                                              */
@@ -214,9 +225,6 @@ int main(void) {
 	configure_console();
 
 	/* Create task to control oled */
-	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
-	  printf("Failed to create oled task\r\n");
-	}
 	
 	if (xTaskCreate(task_modo, "modo", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create modo task\r\n");
